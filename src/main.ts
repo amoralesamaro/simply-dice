@@ -38,6 +38,11 @@ const app = createApp(App)
   .use(IonicVue)
   .use(router);
 
+
+import { initAnalytics } from './services/analytics';
+
 router.isReady().then(() => {
+  initAnalytics();
   app.mount('#app');
 });
+

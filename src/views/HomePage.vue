@@ -1,160 +1,321 @@
 <template>
-  <ion-page>
-    <ion-content :fullscreen="true" class="dice-content" @click="rollDice">
-      <div class="dice-container">
-        <div class="die" :class="{ rolling: isRolling }">
-          <div class="pip" v-for="pip in getPips(die1)" :key="pip" :class="pip"></div>
-        </div>
-        
-        <div class="die" :class="{ rolling: isRolling }">
-          <div class="pip" v-for="pip in getPips(die2)" :key="pip" :class="pip"></div>
-        </div>
-      </div>
-      
-      <div class="instructions">Tap anywhere to roll</div>
-    </ion-content>
-  </ion-page>
+    <ion-page>
+        <ion-content :fullscreen="true" :scrollY="false" class="dice-content">
+
+            <div class="brand-cue">Simply Dice</div>
+
+            <ion-button fill="clear" class="settings-chip" @click="openSettings">
+                <ion-icon slot="icon-only" :icon="settingsOutline"></ion-icon>
+            </ion-button>
+
+            <div class="scene-wrapper" @click="handleRoll">
+                <ThreeDice ref="diceComponent" @roll-complete="onRollComplete" />
+            </div>
+
+            <div class="instructions" :class="{ 'faded': isRolling }">
+                {{ instructionText }}
+            </div>
+
+            <SettingsModal v-model:is-open="isSettingsOpen" v-model:sound="soundEnabled" v-model:haptics="hapticEnabled" v-model:shake="shakeEnabled" :version="appVersion" />
+        </ion-content>
+    </ion-page>
 </template>
 
 <script setup lang="ts">
-import { IonContent, IonPage } from '@ionic/vue';
-import { ref } from 'vue';
+import {
+    IonContent,
+    IonPage,
+    IonButton,
+    IonIcon
+} from '@ionic/vue';
+import { settingsOutline } from 'ionicons/icons';
+import { ref, computed } from 'vue';
+import ThreeDice from '@/components/ThreeDice.vue';
+import SettingsModal from '@/components/SettingsModal.vue';
+import { logRollDice, logOpenSettings } from '@/services/analytics';
 
-const die1 = ref(1);
-const die2 = ref(2); // Start with different numbers for visual interest
+const diceComponent = ref<InstanceType<typeof ThreeDice> | null>(null);
+
+const isSettingsOpen = ref(false);
 const isRolling = ref(false);
+const soundEnabled = ref(true);
+const hapticEnabled = ref(true);
 
-const rollDice = () => {
-  if (isRolling.value) return;
+let currentAudio: HTMLAudioElement | null = null;
+let fadeInterval: any = null;
 
-  isRolling.value = true;
+const playRollSound = () => {
+    if (!soundEnabled.value) return;
 
-  // Wait for animation to finish before updating values
-  setTimeout(() => {
-    die1.value = Math.floor(Math.random() * 6) + 1;
-    die2.value = Math.floor(Math.random() * 6) + 1;
+    // Cleanup previous audio and fade if any
+    if (currentAudio) {
+        currentAudio.pause();
+        currentAudio = null;
+    }
+    if (fadeInterval) {
+        clearInterval(fadeInterval);
+        fadeInterval = null;
+    }
+
+    // Create fresh instance for reliability
+    const audio = new Audio('/sounds/dice_roll.mp3');
+    currentAudio = audio;
+
+    audio.play().catch(e => {
+        console.warn("Audio play failed:", e);
+    });
+};
+
+const handleRoll = () => {
+    if (!isSettingsOpen.value && !isRolling.value) {
+        // Only play if the dice component actually starts a roll
+        // We cast to any because TS might not infer the return type change immediately without full reload
+        if ((diceComponent.value as any)?.roll()) {
+            isRolling.value = true;
+            playRollSound();
+            triggerHaptic(ImpactStyle.Light);
+            logRollDice();
+        }
+    }
+};
+
+const openSettings = () => {
+    isSettingsOpen.value = true;
+    logOpenSettings();
+};
+
+const onRollComplete = () => {
     isRolling.value = false;
-  }, 600); // Matches animation duration
+    triggerHaptic(ImpactStyle.Medium);
+
+    if (!currentAudio || currentAudio.paused) return;
+
+    const audioToFade = currentAudio; // Capture reference
+
+    // Clear any previous interval
+    if (fadeInterval) clearInterval(fadeInterval);
+
+    fadeInterval = setInterval(() => {
+        if (audioToFade.volume > 0.1) {
+            audioToFade.volume = Math.max(0, audioToFade.volume - 0.1);
+        } else {
+            audioToFade.pause();
+            if (currentAudio === audioToFade) {
+                // Audio finished fading
+            }
+            clearInterval(fadeInterval);
+            fadeInterval = null;
+        }
+    }, 50);
 };
 
-// Returns an array of class names for pips based on the die value
-const getPips = (value: number) => {
-  const pipMap: Record<number, string[]> = {
-    1: ['center'],
-    2: ['top-left', 'bottom-right'],
-    3: ['top-left', 'center', 'bottom-right'],
-    4: ['top-left', 'top-right', 'bottom-left', 'bottom-right'],
-    5: ['top-left', 'top-right', 'center', 'bottom-left', 'bottom-right'],
-    6: ['top-left', 'top-right', 'middle-left', 'middle-right', 'bottom-left', 'bottom-right'],
-  };
-  return pipMap[value] || [];
+import { onMounted, onUnmounted, watch } from 'vue';
+import { Haptics, ImpactStyle } from '@capacitor/haptics';
+import { CapacitorShake } from '@capgo/capacitor-shake';
+import { App } from '@capacitor/app';
+import { Preferences } from '@capacitor/preferences';
+
+const shakeEnabled = ref(false);
+let shakeListener: any = null;
+const appVersion = ref('1.0.0');
+
+// Settings Keys
+const SETTINGS_KEY = 'simply_dice_settings';
+
+const loadSettings = async () => {
+    try {
+        const { value } = await Preferences.get({ key: SETTINGS_KEY });
+        if (value) {
+            const settings = JSON.parse(value);
+            if (settings.sound !== undefined) soundEnabled.value = settings.sound;
+            if (settings.haptics !== undefined) hapticEnabled.value = settings.haptics;
+            if (settings.shake !== undefined) shakeEnabled.value = settings.shake;
+        }
+    } catch (e) {
+        console.warn('Error loading settings', e);
+    }
 };
+
+const saveSettings = async () => {
+    try {
+        const settings = {
+            sound: soundEnabled.value,
+            haptics: hapticEnabled.value,
+            shake: shakeEnabled.value
+        };
+        await Preferences.set({
+            key: SETTINGS_KEY,
+            value: JSON.stringify(settings)
+        });
+    } catch (e) {
+        console.warn('Error saving settings', e);
+    }
+};
+
+
+const instructionText = computed(() => {
+    return shakeEnabled.value ? 'Tap or shake to roll' : 'Tap anywhere to roll';
+});
+
+onMounted(async () => {
+    await loadSettings();
+    try {
+        const info = await App.getInfo();
+        appVersion.value = `${info.version} (${info.build})`;
+    } catch (e) {
+        // Fallback for web
+        console.debug('App info not available', e);
+    }
+
+    App.addListener('appStateChange', ({ isActive }) => {
+        if (!isActive) {
+            saveSettings();
+        }
+    });
+});
+
+
+const startShakeListener = async () => {
+    if (shakeListener) return;
+    try {
+        shakeListener = await CapacitorShake.addListener('shake', () => {
+            handleRoll();
+        });
+    } catch (e) {
+        console.warn('Shake listener failed', e);
+    }
+};
+
+const stopShakeListener = async () => {
+    try {
+        if (shakeListener) {
+            await shakeListener.remove();
+            shakeListener = null;
+        }
+    } catch { /* ignore */ }
+};
+
+watch(shakeEnabled, (enabled) => {
+    if (enabled) {
+        startShakeListener();
+    } else {
+        stopShakeListener();
+    }
+    saveSettings();
+});
+
+watch([soundEnabled, hapticEnabled], () => {
+    saveSettings();
+});
+
+const triggerHaptic = async (style: ImpactStyle) => {
+    if (!hapticEnabled.value) return;
+    try {
+        await Haptics.impact({ style });
+    } catch (e) {
+        console.warn('Haptics failed', e);
+    }
+};
+
+
+
+onUnmounted(() => {
+    stopShakeListener();
+});
 </script>
 
 <style scoped>
-/* Main Layout */
 .dice-content {
-  --background: #000; /* Dark background as requested */
-  --color: #fff;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100%;
+    --background: #000;
+    /* Vignette centered slightly higher (50% 40%) to match dice position */
+    background: radial-gradient(circle at 50% 40%, #080808 0%, #000000 80%);
+    contain: size style;
+    overscroll-behavior-y: none;
 }
 
-.dice-container {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 60px; /* Space between dice */
-  height: 100%;
-  width: 100%;
+.brand-cue {
+    position: absolute;
+    /* Consistent top alignment with settings chip */
+    top: max(var(--ion-safe-area-top), 16px);
+    height: 44px;
+    /* Match chip height for vertical centering */
+    display: flex;
+    align-items: center;
+    left: 24px;
+
+    color: #fff;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.3px;
+    opacity: 0.22;
+    z-index: 20;
+    pointer-events: none;
+}
+
+.settings-chip {
+    position: absolute;
+    top: max(var(--ion-safe-area-top), 14px);
+    right: 16px;
+    z-index: 30;
+
+    /* True Circular Glass Chip */
+    --background: rgba(255, 255, 255, 0.1);
+    --background-activated: rgba(255, 255, 255, 0.15);
+    --border-radius: 50%;
+    --color: rgba(255, 255, 255, 0.9);
+    --padding-start: 0;
+    --padding-end: 0;
+
+    width: 44px;
+    height: 44px;
+
+    /* Ensure no square artifact */
+    border-radius: 50%;
+    overflow: hidden;
+
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+
+    border: 0.5px solid rgba(255, 255, 255, 0.12);
+}
+
+.settings-chip ion-icon {
+    font-size: 20px;
+}
+
+.scene-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
 }
 
 .instructions {
-  position: absolute;
-  bottom: 40px;
-  width: 100%;
-  text-align: center;
-  color: #666;
-  font-size: 14px;
-  pointer-events: none;
+    position: absolute;
+    bottom: 50px;
+    width: 100%;
+    text-align: center;
+    color: #fff;
+    font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    font-weight: 500;
+    letter-spacing: 0.4px;
+    font-size: 13px;
+
+    /* Base state: visible but subtle */
+    opacity: 0.55;
+
+    pointer-events: none;
+    user-select: none;
+    z-index: 20;
+
+    /* Consistent transition for fade in/out */
+    transition: opacity 0.3s ease;
 }
 
-/* Die Styling */
-.die {
-  width: 100px;
-  height: 100px;
-  background: white; /* Fallback */
-  background: radial-gradient(circle at 30% 30%, #ffffff, #e0e0e0);
-  border-radius: 16px;
-  box-shadow: 
-    0 10px 20px rgba(0,0,0,0.5),
-    inset 0 0 10px rgba(255,255,255,0.8),
-    inset 0 -5px 15px rgba(0,0,0,0.1);
-  position: relative;
-  transition: transform 0.1s;
-}
-
-/* Pips Positioning */
-.pip {
-  width: 20px;
-  height: 20px;
-  background: #111;
-  border-radius: 50%;
-  position: absolute;
-  box-shadow: inset 0 2px 3px rgba(0,0,0,0.6);
-}
-
-/* Grid system: 100x100 die. Pips are 20x20. */
-/* Padding approx 10px from edges */
-
-.center {
-  top: 40px;
-  left: 40px;
-}
-
-.top-left {
-  top: 12px;
-  left: 12px;
-}
-
-.top-right {
-  top: 12px;
-  right: 12px;
-}
-
-.bottom-left {
-  bottom: 12px;
-  left: 12px;
-}
-
-.bottom-right {
-  bottom: 12px;
-  right: 12px;
-}
-
-.middle-left {
-  top: 40px;
-  left: 12px;
-}
-
-.middle-right {
-  top: 40px;
-  right: 12px;
-}
-
-/* Rolling Animation */
-.rolling {
-  animation: roll 0.6s ease-in-out;
-}
-
-@keyframes roll {
-  0% { transform: scale(1) rotate(0deg); }
-  25% { transform: scale(0.9) rotate(90deg); }
-  50% { transform: scale(1.1) rotate(180deg); }
-  75% { transform: scale(0.9) rotate(270deg); }
-  100% { transform: scale(1) rotate(360deg); }
+.instructions.faded {
+    /* Slight fade during roll, still readable */
+    opacity: 0.3;
 }
 </style>
