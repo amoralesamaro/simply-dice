@@ -1,3 +1,8 @@
+---
+layout: simple
+title: Privacy Policy
+---
+
 # Privacy Policy
 
 **Simply Dice** values your privacy. This app is designed to be simple, focused, and respectful of your personal data.
@@ -54,7 +59,7 @@ This Privacy Policy may be updated from time to time. Any changes will be reflec
 
 If you have questions about this Privacy Policy, you may contact the developer at:
 
-**Email:** alexito837@gmail.com
+**Email:** contact@alexismorales.net
 
 ---
 
