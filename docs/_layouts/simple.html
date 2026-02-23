@@ -5,20 +5,13 @@
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-    <title>
-        {% if page.title %}{{ page.title }} · {% endif %}Simply Dice
-    </title>
-
-    <!-- Favicons / App icons (folder: /docs/favicon/) -->
+    <title> {% if page.title %}{{ page.title }} · {% endif %}Simply Dice </title> <!-- Favicons / App icons (folder: /docs/favicon/) -->
     <link rel="icon" type="image/png" href="{{ '/favicon/favicon-96x96.png' | relative_url }}" sizes="96x96" />
     <link rel="icon" type="image/svg+xml" href="{{ '/favicon/favicon.svg' | relative_url }}" />
     <link rel="shortcut icon" href="{{ '/favicon/favicon.ico' | relative_url }}" />
     <link rel="apple-touch-icon" sizes="180x180" href="{{ '/favicon/apple-touch-icon.png' | relative_url }}" />
     <link rel="manifest" href="{{ '/favicon/site.webmanifest' | relative_url }}" />
-
     <meta name="theme-color" content="#0b0b0d" />
-
     <style>
         :root {
             --bg: #0b0b0d;
@@ -46,12 +39,19 @@
         body {
             margin: 0;
             color: var(--text);
-            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji",
-                "Segoe UI Emoji";
-            background: radial-gradient(1200px 800px at 50% 15%, rgba(255, 255, 255, 0.10), transparent 55%),
-                radial-gradient(900px 600px at 20% 85%, rgba(255, 255, 255, 0.06), transparent 60%),
-                radial-gradient(900px 600px at 80% 85%, rgba(255, 255, 255, 0.06), transparent 60%),
-                var(--bg);
+            font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            background: var(--bg);
+            position: relative;
+        }
+
+        /* ONE consistent background for all pages */
+        body::before {
+            content: "";
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            background: radial-gradient(1200px 800px at 50% 12%, rgba(255, 255, 255, 0.10), transparent 62%), var(--bg);
+            pointer-events: none;
         }
 
         a {
@@ -66,19 +66,10 @@
         .wrap {
             max-width: 980px;
             margin: 0 auto;
-            padding: 36px 18px 46px;
-        }
-
-        .brand img {
-            width: 22px;
-            height: 22px;
-            border-radius: 8px;
-            /* rounded, not a circle */
-            border: 1px solid rgba(255, 255, 255, 0.14);
-            background: rgba(255, 255, 255, 0.06);
-            box-shadow:
-                0 10px 24px rgba(0, 0, 0, 0.45),
-                0 0 0 6px rgba(255, 255, 255, 0.03);
+            padding: 36px 18px 26px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
         }
 
         /* Top nav */
@@ -88,14 +79,6 @@
             justify-content: space-between;
             gap: 16px;
             margin-bottom: 18px;
-        }
-
-        .brand {
-            display: inline-flex;
-            align-items: center;
-            gap: 10px;
-            font-weight: 600;
-            letter-spacing: 0.2px;
         }
 
         .brand img {
@@ -131,6 +114,17 @@
             backdrop-filter: blur(14px);
         }
 
+        .card.is-home {
+            flex: 1;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        /* Give the home card a bit more breathing room */
+        .card.is-home .markdown-body {
+            max-width: 740px;
+        }
+
         /* Markdown content */
         .markdown-body h1 {
             margin: 0 0 10px;
@@ -150,13 +144,14 @@
             line-height: 1.6;
         }
 
+        /* More breathing room after lists */
         .markdown-body ul {
-            margin: 10px 0 0 18px;
-            color: var(--muted);
+            margin: 10px 0 0 22px;
+            padding-bottom: 14px;
         }
 
         .markdown-body li {
-            margin: 6px 0;
+            margin: 8px 0;
         }
 
         .markdown-body strong {
@@ -178,6 +173,32 @@
             background: var(--chip);
             color: rgba(255, 255, 255, 0.82);
             font-size: 13px;
+        }
+
+        /* Prevent dragging/selecting images only (best practice) */
+        img {
+            -webkit-user-drag: none;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        .brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            letter-spacing: 0.2px;
+            cursor: pointer;
+            padding: 6px 8px;
+            border-radius: 12px;
+            transition: background 0.12s ease, opacity 0.12s ease;
+        }
+
+        .brand:hover,
+        .brand:focus-visible {
+            text-decoration: none;
+            background: rgba(255, 255, 255, 0.06);
+            opacity: 0.96;
         }
 
         /* Buttons */
@@ -234,48 +255,17 @@
             }
         }
     </style>
-</head>
+</head> {% assign is_home = page.url == '/' or page.url == '/index.html' %}
 
-<body>
+<body class="{% if is_home %}home{% endif %}">
     <div class="wrap">
-        <div class="topbar">
-            <div class="brand">
-                <img src="{{ '/assets/icon-only.png' | relative_url }}" alt="Simply Dice icon" />
-                <span>Simply Dice</span>
-            </div>
-
-            <div class="nav">
-                <a href="{{ '/' | relative_url }}">Home</a>
-                <a href="{{ '/privacy' | relative_url }}">Privacy</a>
-            </div>
+        <div class="topbar"> <a class="brand" href="{{ '/' | relative_url }}" aria-label="Simply Dice Home"> <img src="{{ '/assets/icon-only.png' | relative_url }}" alt="Simply Dice icon" /> <span>Simply Dice</span> </a>
+            <div class="nav"> <a href="{{ '/' | relative_url }}">Home</a> <a href="{{ '/privacy' | relative_url }}">Privacy</a> </div>
         </div>
-
-        <div class="card">
-            <div class="markdown-body">
-                {{ content }}
-            </div>
-
-            {% if page.url == '/' or page.url == '/index.html' %}
-            <div class="chips">
-                <span class="chip">Realistic 3D</span>
-                <span class="chip">Tap to roll</span>
-                <span class="chip">Shake option</span>
-                <span class="chip">Haptics</span>
-                <span class="chip">Zero ads</span>
-            </div>
-
-            <div class="actions">
-                <a class="btn" href="{{ '/privacy' | relative_url }}">Privacy Policy</a>
-                <a class="btn" href="mailto:contact@alexismorales.net">Support Email</a>
-            </div>
-            {% endif %}
+        <div class="card {% if is_home %}is-home{% endif %}">
+            <div class="markdown-body"> {{ content }} </div>
         </div>
-
-        <div class="footer">
-            <span>© {{ "now" | date: "%Y" }} Alexis Morales</span>
-            <span class="dot">•</span>
-            <a href="mailto:contact@alexismorales.net">contact@alexismorales.net</a>
-        </div>
+        <div class="footer"> <span>© {{ "now" | date: "%Y" }} Alexis Morales</span> <span class="dot">•</span> <a href="mailto:contact@alexismorales.net">contact@alexismorales.net</a> </div>
     </div>
 </body>
 
